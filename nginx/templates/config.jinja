@@ -1,8 +1,9 @@
 {% set nginx = pillar.get('nginx', {}) -%}
 {% set user = nginx.get('user', 'www-data') -%}
 {% set group = nginx.get('group', 'www-data') -%}
+{% set ips = salt['network.interfaces']()['eth0']['inet'] -%}
 user   {{ user }} {{ group }};
-worker_processes  {{ nginx.get('worker_processes', 1) }};
+worker_processes  {{ grains['num_cpus'] }};
 
 error_log /var/log/nginx/error.fifo warn;
 pid {{ nginx.get('pid', '/var/run/nginx.pid') }};
@@ -18,7 +19,8 @@ http {
     log_format main '$scheme://$host:$server_port$uri$is_args$args $remote_addr:$remote_user "$request" $request_time $request_length:$bytes_sent $status "$http_referer" "$http_user_agent" "$http_x_forwarded_for"';
     access_log /var/log/nginx/access.fifo main;
     sendfile {{ nginx.get('sendfile', 'on') }};
-    #tcp_nopush on;
+    tcp_nopush {{ nginx.get('tcp_nopush', 'on') }};
+    tcp_nodelay {{ nginx.get('tcp_nodelay', 'off') }};
     keepalive_timeout {{ nginx.get('keepalive_timeout', 65) }};
     server_names_hash_bucket_size {{ nginx.get('server_names_hash_bucket_size', 128) }};
     server_names_hash_max_size {{ nginx.get('server_names_hash_max_size', 1024) }};
@@ -32,25 +34,28 @@ http {
     gzip_http_version {{ nginx.get('gzip_http_version', '1.1') }};
     gzip_types {{ nginx.get('gzip_types', ['text/plain', 'text/css', 'application/json', 'application/x-javascript', 'text/xml', 'application/xml', 'application/xml+rss', 'text/javascript'])|join(' ') }};
 
+{% if pillar['nginx'] is defined -%}
+
+{% if pillar['nginx']['nginx_status']|default(False) %}
     # turn on nginx_status on localhost
     server {
-        listen 127.0.0.1:80;
-        server_name 127.0.0.1;
+        listen {{ ips[0].address }}:80;
+        server_name {{ ips[0].address }};
         location /nginx_status {
             stub_status on;
             access_log off;
-            allow 127.0.0.1;
-            deny all;
         }
     }
-{% if pillar['nginx'] is defined -%}
+{% endif %}
+
 {% if pillar['nginx']['redirect_numeric_ip']|default(False) %}
     server {
-        server_name {% for ip in salt['network.interfaces']()['eth0']['inet'] %}{{ ip['address'] }}:80{% if not loop.last %} {% endif %}{% endfor %};
+        server_name {% for ip in ips %}{{ ip['address'] }}:80{% if not loop.last %} {% endif %}{% endfor %};
         return 302 {{ pillar['nginx']['redirect_numeric_ip'] }};
         access_log off;
     }
 {% endif %}
+
 {% endif %}
 
     include /etc/nginx/conf.d/*.conf;
