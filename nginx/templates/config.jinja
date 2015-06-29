@@ -49,25 +49,24 @@ http {
     gzip_disable "{{ nginx.get('gzip_disable', 'msie6') }}";
 
 {% if pillar['nginx'] is defined -%}
-
-{% if pillar['nginx']['nginx_status']|default(False) %}
-    # turn on nginx_status on localhost
-    server {
-        listen {{ ips[0].address }}:80;
-        server_name {{ ips[0].address }};
-        location /nginx_status {
-            stub_status on;
+  {% if pillar['nginx']['nginx_status']|default(False) %}
+      # turn on nginx_status on localhost
+      server {
+          listen {{ ips[0].address }}:80;
+          server_name {{ ips[0].address }};
+          location /nginx_status {
+              stub_status on;
+              access_log off;
+          }
+      }
+      {% if pillar['nginx']['redirect_numeric_ip']|default(False) -%}
+        server {
+            server_name {% for ip in ips %}{{ ip['address'] }}:80{% if not loop.last %} {% endif %}{% endfor %};
+            return 302 {{ pillar['nginx']['redirect_numeric_ip'] }};
             access_log off;
         }
-    }
-{% if pillar['nginx'] is defined -%}
-{% if pillar['nginx']['redirect_numeric_ip']|default(False) -%}
-    server {
-        server_name {% for ip in ips %}{{ ip['address'] }}:80{% if not loop.last %} {% endif %}{% endfor %};
-        return 302 {{ pillar['nginx']['redirect_numeric_ip'] }};
-        access_log off;
-    }
-{% endif -%}
+      {% endif -%}
+  {% endif -%}
 {% endif %}
 
     include /etc/nginx/conf.d/*.conf;
